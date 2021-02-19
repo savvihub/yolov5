@@ -36,7 +36,7 @@ from utils.torch_utils import ModelEMA, select_device, intersect_dicts, torch_di
 logger = logging.getLogger(__name__)
 
 
-def train(hyp, opt, device, tb_writer=None, wandb=None):
+def train(hyp, opt, device, tb_writer=None, wandb=None, savvihub=None):
     logger.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
     save_dir, epochs, batch_size, total_batch_size, weights, rank = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.total_batch_size, opt.weights, opt.global_rank
@@ -368,6 +368,8 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
                     tb_writer.add_scalar(tag, x, epoch)  # tensorboard
                 if wandb:
                     wandb.log({tag: x}, step=epoch, commit=tag == tags[-1])  # W&B
+                if savvihub:
+                    savvihub.log(step=epoch, row={x: tag})
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
@@ -525,6 +527,14 @@ if __name__ == '__main__':
             tb_writer = SummaryWriter(opt.save_dir)  # Tensorboard
         train(hyp, opt, device, tb_writer, wandb)
 
+    # SavviHub
+    try:
+        import savvihub
+    except ImportError:
+        savvihub = None
+        prefix = colorstr('savvihub: ')
+        logger.info(f"{savvihub}Install SavviHub for YOLOv5 logging with 'pip install savvihub' (recommended)")
+
     # Evolve hyperparameters (optional)
     else:
         # Hyperparameter evolution metadata (mutation scale 0-1, lower_limit, upper_limit)
@@ -597,7 +607,7 @@ if __name__ == '__main__':
                 hyp[k] = round(hyp[k], 5)  # significant digits
 
             # Train mutation
-            results = train(hyp.copy(), opt, device, wandb=wandb)
+            results = train(hyp.copy(), opt, device, wandb=wandb, savvihub=savvihub)
 
             # Write mutation results
             print_mutation(hyp.copy(), results, yaml_file, opt.bucket)
